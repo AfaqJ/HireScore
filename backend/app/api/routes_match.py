@@ -3,6 +3,7 @@ from sqlmodel import Session
 from app.schemas.common import MatchIn
 from app.db.session import get_session
 from app.db import crud
+from app.services.aligner import extract_jd_skills, score_resume_against_skills
 
 router = APIRouter(tags=["match"])
 
@@ -12,19 +13,19 @@ def match(req: MatchIn, session: Session = Depends(get_session)):
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
 
-    if req.resume_id is None:
-        return {"cv_match": {"score": 0, "gaps": ["no resume provided"]}}
+    collection_name = f"jd_{job.id}"
+    skills = extract_jd_skills(collection_name)
+    if not skills:
+        # either JD was empty or indexing failed (rare). Return safe fallback.
+        skills = [{"skill": "communication", "importance": 3, "must_have": False}]
 
-    resume = crud.get_resume(session, req.resume_id)
-    if not resume:
-        raise HTTPException(status_code=404, detail="resume not found")
+    result = {"cv_match": None}
 
-    # placeholder until we add AI alignment
-    return {
-        "cv_match": {
-            "score": 42.0,
-            "gaps": ["(placeholder, AI coming next)"],
-            "job_title": job.title,
-            "resume_chars": len(resume.text)
-        }
-    }
+    if req.resume_id is not None:
+        resume = crud.get_resume(session, req.resume_id)
+        if not resume:
+            raise HTTPException(status_code=404, detail="resume not found")
+        cv_res = score_resume_against_skills(resume.text, skills)
+        result["cv_match"] = cv_res
+
+    return result
