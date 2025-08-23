@@ -4,6 +4,7 @@ from app.api.routes_jd import router as jd_router
 from app.api.routes_resume import router as resume_router
 from app.api.routes_match import router as match_router
 from app.db.session import init_db
+from app.api.routes_quiz import router as quiz_router
 
 app = FastAPI(title="JobFit AI Backend")
 
@@ -25,3 +26,4 @@ def root():
 app.include_router(jd_router)
 app.include_router(resume_router)
 app.include_router(match_router)
+app.include_router(quiz_router)
