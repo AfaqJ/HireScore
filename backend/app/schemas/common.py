@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import List, Dict
 
 class JDIn(BaseModel):
     title: str
@@ -10,7 +11,8 @@ class ResumeIn(BaseModel):
 class MatchIn(BaseModel):
     job_id: int
     resume_id: int | None = None
-    mode: str = "cv_only"   # "cv_only" | "quiz_only" | "both" (quiz later)
+    quiz_id: int | None = None     # NEW
+    mode: str = "cv_only"          # kept for compatibility
 
 
 
