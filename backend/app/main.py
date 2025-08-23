@@ -23,6 +23,10 @@ app.add_middleware(
 def root():
     return {"ok": True, "service": "jobfit-ai"}
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 app.include_router(jd_router)
 app.include_router(resume_router)
 app.include_router(match_router)

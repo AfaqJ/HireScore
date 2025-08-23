@@ -5,12 +5,13 @@ from langchain_community.vectorstores import Chroma
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.prompts import PromptTemplate
 from typing import List, Dict
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # ---- LLM ----
 def get_llm():
     # Any local model you pulled with Ollama works here
     # e.g., "mistral:7b-instruct-q4_0" or "llama3.1:8b-instruct-q4_0"
-    return ChatOllama(model="mistral:7b-instruct-q4_0", temperature=0.2)
+    return ChatOllama(model="mistral:latest", temperature=0.2)
 
 # ---- Embeddings ----
 def get_embedder():
@@ -28,29 +29,19 @@ def get_vectorstore(job_id: int) -> Chroma:
         embedding_function=embeddings,
         persist_directory="./.chroma",
     )
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
 
 def index_job_description(job_id: int, jd_text: str):
-    """
-    Chunk + add to Chroma via LangChain.
-    Chroma.add_texts() handles embedding via the embedding_function above.
-    """
-    # naive char chunker like before (you can replace with recursive text splitter later)
-    chunks = []
-    i = 0
-    L = len(jd_text)
-    max_chars = 1000
-    overlap = 150
-    while i < L:
-        j = min(i + max_chars, L)
-        chunks.append(jd_text[i:j])
-        if j == L:
-            break
-        i = max(0, j - overlap)
-
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000, chunk_overlap=150, separators=["\n\n", "\n", " ", ""]
+    )
+    chunks = splitter.split_text(jd_text)
     vs = get_vectorstore(job_id)
     ids = [f"d{i}" for i in range(len(chunks))]
     vs.add_texts(texts=chunks, ids=ids)
     vs.persist()
+
 
 def get_retriever(job_id: int, k: int = 4):
     vs = get_vectorstore(job_id)

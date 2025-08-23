@@ -1,1 +1,12 @@
-# HireScore
+# HireScore — AI Job Fit (LangChain + FastAPI)
+
+**Stack:** FastAPI, LangChain (ChatOllama, Chroma, HF Embeddings), SQLite (SQLModel), Ollama local LLM
+
+## Run locally
+
+```bash
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1  # on Windows
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload
