@@ -15,7 +15,7 @@ def _parse_json(text: str):
 def extract_jd_skills_langchain(job_id: int, top_k_ctx: int = 6) -> List[Dict]:
     retriever = get_retriever(job_id, k=top_k_ctx)
     # pull context by asking a general query
-    docs = retriever.get_relevant_documents("key skills, requirements, and tech stack")
+    docs = retriever.invoke("key skills, requirements, and tech stack")
     ctx = "\n\n".join([d.page_content for d in docs])
     chain = make_skill_chain()
     raw = chain.invoke(ctx)  # llm returns a string
@@ -24,19 +24,20 @@ def extract_jd_skills_langchain(job_id: int, top_k_ctx: int = 6) -> List[Dict]:
     # dedupe + clamp
     seen = {}
     for it in items:
-        s = str(it.get("skill","")).strip()
-        if not s: 
+        s = str(it.get("skill", "")).strip()
+        if not s:
             continue
         key = s.casefold()
         imp = int(it.get("importance", 3))
-        mh  = bool(it.get("must_have", False))
-        imp = min(max(imp,1),5)
+        mh = bool(it.get("must_have", False))
+        imp = min(max(imp, 1), 5)
         if key not in seen:
             seen[key] = {"skill": s, "importance": imp, "must_have": mh}
         else:
             seen[key]["importance"] = max(seen[key]["importance"], imp)
             seen[key]["must_have"] = seen[key]["must_have"] or mh
     return list(seen.values())[:20]
+
 
 def _present(skill: str, text: str) -> bool:
     pat = re.escape(skill)

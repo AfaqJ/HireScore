@@ -1,7 +1,7 @@
 # app/services/lc.py
 from langchain_ollama import ChatOllama
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.prompts import PromptTemplate
 from typing import List, Dict
@@ -33,14 +33,24 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 
 def index_job_description(job_id: int, jd_text: str):
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000, chunk_overlap=150, separators=["\n\n", "\n", " ", ""]
-    )
-    chunks = splitter.split_text(jd_text)
-    vs = get_vectorstore(job_id)
-    ids = [f"d{i}" for i in range(len(chunks))]
-    vs.add_texts(texts=chunks, ids=ids)
-    vs.persist()
+    print(f"⚡ Starting index_job_description for job {job_id}")
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    persist_dir = f"chroma_db/job_{job_id}"
+    try:
+        vs = Chroma.from_texts(
+            [jd_text],
+            embedding=embeddings,
+            persist_directory=persist_dir
+        )
+        print(f"✅ Successfully built Chroma store at {persist_dir}")
+        return vs
+    except Exception as e:
+        import traceback
+        print("❌ Exception in Chroma.from_texts")
+        traceback.print_exc()
+        raise e
+
+
 
 
 def get_retriever(job_id: int, k: int = 4):
@@ -78,6 +88,7 @@ Return ONLY JSON: [{{"q":"..."}}, ...] (no extra text)
 JD CONTEXT:
 {context}
 """)
+
 
 def make_quiz_chain():
     llm = get_llm()

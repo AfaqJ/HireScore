@@ -11,6 +11,14 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 def ingest_jd(payload: JDIn, session: Session = Depends(get_session)):
     if not payload.jd_text.strip():
         raise HTTPException(status_code=400, detail="jd_text is empty")
-    job = crud.create_job(session, payload.title, payload.jd_text)
-    index_job_description(job.id, payload.jd_text)  # <- LangChain vector store
-    return {"job_id": job.id}
+    try:
+        job = crud.create_job(session, payload.title, payload.jd_text)
+        index_job_description(job.id, payload.jd_text)
+        print(f"Returning job_id={job.id}")
+
+        # embeddings
+        return {"job_id": job.id}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

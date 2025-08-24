@@ -16,3 +16,14 @@ env/
 # IDE/editor settings
 .vscode/
 .idea/
+
+
+
+node_modules/
+
+
+
+
+
+
+

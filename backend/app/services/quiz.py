@@ -2,6 +2,10 @@
 from typing import List, Dict
 import json, re
 from app.services.lc import get_retriever, make_quiz_chain, make_grade_chain
+from app.db import crud 
+from app.db.session import get_session
+from sqlmodel import Session
+
 
 def _parse(text: str):
     t = text.strip()
@@ -11,16 +15,23 @@ def _parse(text: str):
     except Exception:
         return []
 
-def make_questions(job_id: int, n: int = 5) -> List[str]:
-    retriever = get_retriever(job_id, k=6)
-    docs = retriever.get_relevant_documents("core responsibilities and required skills")
-    ctx = "\n\n".join([d.page_content for d in docs])
+def make_questions(job_id: int, n: int = 5, session: Session = None) -> List[str]:
+    # Get full JD text from DB
+    if session is None:
+        raise ValueError("Session is required for make_questions")
+    job = crud.get_job(session, job_id)
+    if not job:
+        return []
+
+    ctx = job.jd_text  # 👈 Use full JD text directly
+
     chain = make_quiz_chain()
     raw = chain.invoke({"context": ctx, "n": n})
     out = _parse(raw.content if hasattr(raw, "content") else str(raw))
+
     qs = [o.get("q","").strip() for o in out if isinstance(o, dict) and o.get("q")]
     if len(qs) < n:
-        qs += ["Describe a project using the core tools from this JD."] * (n - len(qs))
+        qs += ["Based on this JD, describe your experience with its main tools/skills."] * (n - len(qs))
     return qs[:n]
 
 def grade_one(job_id: int, question: str, answer: str) -> Dict:

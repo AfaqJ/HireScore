@@ -13,7 +13,7 @@ def quiz_start(req: QuizStartIn, session: Session = Depends(get_session)):
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
     quiz = crud.create_quiz(session, job.id)
-    qs = make_questions(job.id, n=req.n)
+    qs = make_questions(job.id, n=req.n, session=session)
     rows = crud.add_questions(session, quiz.id, qs)
     return {"quiz_id": quiz.id, "questions": [{"id": r.id, "idx": r.idx, "text": r.text} for r in rows]}
 
