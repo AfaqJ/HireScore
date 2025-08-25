@@ -2,33 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --card: 255 255 255;
+/* Cards / layout */
+.card { @apply bg-white border border-slate-200 rounded-2xl shadow-sm; }
+.card-h { @apply px-5 pt-5 pb-3; }
+.card-c { @apply p-5 pt-0; }
+
+.section-header { @apply card-h border-b border-slate-100; }
+.section-title  { @apply text-2xl font-semibold text-slate-900 text-center; }
+.section-sub    { @apply mt-1 text-sm text-slate-600 text-center; }
+
+.label { @apply block text-sm mb-1 text-slate-700; }
+
+/* Buttons */
+.btn { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed; }
+.btn-primary { @apply btn bg-indigo-600 text-white hover:bg-indigo-700; }
+.btn-outline { @apply btn border border-slate-300 bg-white hover:bg-slate-50; }
+.btn-sm { @apply px-3 py-1.5 text-xs; }
+.icon-btn { @apply rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100; }
+
+/* Chips / badges */
+.chip { @apply inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs; }
+.chip-good { @apply border-green-200 bg-green-50 text-green-700; }
+.chip-warn { @apply border-amber-200 bg-amber-50 text-amber-800; }
+.chip-bad  { @apply border-rose-200 bg-rose-50 text-rose-700; }
+.chip-muted{ @apply border-slate-200 bg-slate-100 text-slate-700; }
+
+/* Inputs */
+.input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-200; }
+.textarea { @apply input min-h-[140px]; }
+.input-narrow { @apply w-20; }
+
+/* Toasts */
+.toast { @apply mx-auto flex max-w-6xl items-center gap-2 rounded-xl border px-4 py-3 shadow-sm; }
+.toast-success { @apply border-green-200 bg-green-50 text-green-800; }
+.toast-error   { @apply border-rose-200 bg-rose-50 text-rose-800; }
+.toast-info    { @apply border-slate-200 bg-slate-50 text-slate-700; }
+
+/* Result panel */
+.result-panel { @apply relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm; }
+
+/* Modal */
+.modal-backdrop { @apply fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4; }
+.modal-panel { @apply w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl; }
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.animate-spin { animation: spin 0.8s linear infinite; }
+
+/* ---------- Upload Dropzone styles ---------- */
+.upload-drop {
+  @apply relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-10 text-center transition;
 }
-.card {
-  @apply bg-white border border-slate-200 rounded-2xl shadow-sm;
-}
-.card-h {
-  @apply px-5 pt-5 pb-3;
-}
-.card-c {
-  @apply p-5 pt-0;
-}
-.btn {
-  @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed;
-}
-.btn-primary {
-  @apply btn bg-indigo-600 text-white hover:bg-indigo-700;
-}
-.btn-outline {
-  @apply btn border border-slate-300 bg-white hover:bg-slate-50;
-}
-.badge {
-  @apply inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border;
-}
-.input {
-  @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-200;
-}
-.textarea {
-  @apply input min-h-[140px];
-}
+.upload-drop:hover { @apply border-indigo-300 bg-white; }
+.upload-drop.is-drag { @apply border-indigo-400 bg-indigo-50; }
+
+.dz-icon   { @apply text-4xl; }
+.dz-title  { @apply mt-2 text-base font-medium text-slate-800; }
+.dz-sub    { @apply text-xs text-slate-500; }
+
+.upload-overlay { @apply absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/70; }

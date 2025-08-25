@@ -72,7 +72,7 @@ import type {
       });
       return j(res);
     },
-  
+                                                      
     async gradeQuiz(payload: { quiz_id: number; answers: { question_id: number; text: string }[] }): Promise<QuizGradeResp> {
       const res = await fetch(`${BASE}/quiz/grade`, {
         method: "POST",
@@ -80,7 +80,7 @@ import type {
         body: JSON.stringify(payload),
       });
       return j(res);
-    },
+    },                         
   
     async match(payload: { job_id: number; resume_id?: number; quiz_id?: number }): Promise<MatchResp> {
       const res = await fetch(`${BASE}/match`, {

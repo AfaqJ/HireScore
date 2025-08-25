@@ -5,10 +5,17 @@ export interface QuizStartResp {
   quiz_id: number
   questions: { id: number; idx: number; text: string }[]
 }
-export interface QuizGradeResp {
-  overall: number
-  feedback: { question_id: number; score: number; tip: string }[]
-}
+export type QuizGradeResp = {
+    overall: number;
+    feedback: { question_id: number; score: number; tip: string }[];
+    quiz_match?: {
+      score: number;
+      gaps: string[];
+      matched: number;
+      total_skills: number;
+      message?: string;
+    };
+  };
 export interface MatchResp {
   cv_match?: { score: number; gaps: string[]; matched: number; total_skills: number } | null
   quiz_match?: { score: number } | null

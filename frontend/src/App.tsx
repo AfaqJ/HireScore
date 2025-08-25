@@ -1,344 +1,683 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { api } from './api'
-import type { MatchResp, QuizGradeResp, QuizStartResp } from './types'
+import React, { useEffect, useRef, useState } from "react";
+import { api } from "./api";
+import type { MatchResp, QuizGradeResp, QuizStartResp } from "./types";
 
-const pct = (n?: number | null) => (n == null ? '—' : `${Math.round(n)}%`)
-const badgeClass = (b?: string) => {
-  if (!b) return 'badge border-slate-300 text-slate-700 bg-slate-100'
-  if (b.includes('strong')) return 'badge border-green-200 text-green-800 bg-green-100'
-  if (b.includes('good')) return 'badge border-emerald-200 text-emerald-800 bg-emerald-100'
-  if (b.includes('gaps') || b.includes('weak')) return 'badge border-amber-200 text-amber-800 bg-amber-50'
-  if (b.includes('low') || b.includes('risk')) return 'badge border-rose-200 text-rose-800 bg-rose-50'
-  return 'badge border-slate-300 text-slate-700 bg-slate-100'
+/* ---------- helpers ---------- */
+const pct = (n?: number | null) => (n == null ? "—" : `${Math.round(n)}%`);
+
+function humanizeBadge(b?: string) {
+  if (!b) return { label: "Result", tone: "neutral", emoji: "ℹ️" };
+  const key = b.toLowerCase();
+  if (key.includes("strong") || key.includes("good"))
+    return { label: "Strong match", tone: "good", emoji: "✅" };
+  if (key.includes("gap") || key.includes("weak") || key.includes("risk"))
+    return { label: "Gaps to address", tone: "warn", emoji: "⚠️" };
+  if (key.includes("low"))
+    return { label: "Low match", tone: "bad", emoji: "❗" };
+  return { label: "Result", tone: "neutral", emoji: "ℹ️" };
 }
 
-export default function App() {
-  // Health
-  const [health, setHealth] = useState<'checking'|'ok'|'error'>('checking')
-  useEffect(() => {
-    api.health().then(() => setHealth('ok')).catch(() => setHealth('error'))
-  }, [])
+function Spinner() {
+  return (
+    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent align-[-2px]" />
+  );
+}
 
-  // JD
-  const [jobTitle, setJobTitle] = useState('')
-  const [jobText, setJobText] = useState('')
-  const [jobId, setJobId] = useState<number | null>(null)
+/* ---------- File Upload (drag & drop + click) ---------- */
+type FileUploadProps = {
+  accept?: string;
+  busy?: boolean;
+  onSelect: (file?: File | null) => void;
+};
 
-  // Resume
-  const [resumeText, setResumeText] = useState('')
-  const [resumeId, setResumeId] = useState<number | null>(null)
+function FileUpload({ accept = ".pdf,.docx,.txt", busy, onSelect }: FileUploadProps) {
+  const [dragging, setDragging] = useState(false);
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Quiz
-  const [quizN, setQuizN] = useState(5)
-  const [quiz, setQuiz] = useState<QuizStartResp | null>(null)
-  const [answers, setAnswers] = useState<Record<number,string>>({})
-  const [graded, setGraded] = useState<QuizGradeResp | null>(null)
-
-  // Results
-  const [cvResult, setCvResult] = useState<MatchResp | null>(null)
-  const [combined, setCombined] = useState<MatchResp | null>(null)
-
-  // Busy & toast
-  const [busy, setBusy] = useState<string | null>(null)
-  const [toast, setToast] = useState<{kind:'success'|'error'|'info', msg:string} | null>(null)
-
-  const canCvMatch = !!jobId && !!resumeId
-  const canStartQuiz = !!jobId
-  const canComputeCombined = !!jobId && (!!resumeId || !!quiz?.quiz_id || !!graded)
-
-  const resetAll = () => {
-    setJobTitle(''); setJobText(''); setJobId(null)
-    setResumeText(''); setResumeId(null)
-    setQuizN(5); setQuiz(null); setAnswers({}); setGraded(null)
-    setCvResult(null); setCombined(null)
+  function handleFiles(files: FileList | null) {
+    const file = files && files[0] ? files[0] : null;
+    if (!file) return;
+    setSelectedName(`${file.name} • ${Math.ceil(file.size / 1024)} KB`);
+    onSelect(file);
   }
 
-  // Actions
-  async function saveJD() {
-    setBusy('jd')
-    try {
-      const r = await api.saveJD({ title: jobTitle, jd_text: jobText })
-      setJobId(r.job_id); setToast({kind:'success', msg:`Saved JD (job_id: ${r.job_id})`})
-    } catch (e:any) {
-      setToast({kind:'error', msg:e.message || 'Failed to save JD'})
-    } finally { setBusy(null) }
-  }
-
-  async function saveResume() {
-    setBusy('resume_text')
-    try {
-      const r = await api.saveResumeText({ text: resumeText })
-      setResumeId(r.resume_id); setToast({kind:'success', msg:`Saved Resume (resume_id: ${r.resume_id})`})
-    } catch (e:any) {
-      setToast({kind:'error', msg:e.message || 'Failed to save resume'})
-    } finally { setBusy(null) }
-  }
-
-  async function uploadResumeFile(file?: File | null) {
-    if (!file) return
-    setBusy('resume_file')
-    try {
-      const r = await api.uploadResumeFile(file)
-      setResumeId(r.resume_id); setToast({kind:'success', msg:`Uploaded resume (id: ${r.resume_id}, ${r.chars} chars)`})
-    } catch (e:any) {
-      setToast({kind:'error', msg:e.message || 'Upload failed'})
-    } finally { setBusy(null) }
-  }
-
-  async function runCvMatch() {
-    if (!canCvMatch) return
-    setBusy('cv')
-    try {
-      const r = await api.match({ job_id: jobId!, resume_id: resumeId! })
-      setCvResult(r); setToast({kind:'success', msg:'CV match computed'})
-    } catch (e:any) {
-      setToast({kind:'error', msg:e.message || 'CV match failed'})
-    } finally { setBusy(null) }
-  }
-
-  async function startQuiz() {
-    if (!canStartQuiz) return
-    setBusy('quiz_start')
-    try {
-      const r = await api.startQuiz({ job_id: jobId!, n: quizN })
-      setQuiz(r); setAnswers({}); setGraded(null)
-      setToast({kind:'success', msg:`Quiz started (quiz_id: ${r.quiz_id})`})
-    } catch (e:any) {
-      setToast({kind:'error', msg:e.message || 'Quiz start failed'})
-    } finally { setBusy(null) }
-  }
-
-  async function submitAnswers() {
-    if (!quiz?.quiz_id) return
-    setBusy('quiz_grade')
-    try {
-      const payload = {
-        quiz_id: quiz.quiz_id,
-        answers: quiz.questions.map(q => ({ question_id: q.id, text: answers[q.id] || '' }))
-      }
-      const r = await api.gradeQuiz(payload)
-      setGraded(r); setToast({kind:'success', msg:`Quiz graded (${Math.round(r.overall)}%)`})
-    } catch (e:any) {
-      setToast({kind:'error', msg:e.message || 'Quiz grade failed'})
-    } finally { setBusy(null) }
-  }
-
-  async function computeCombined() {
-    if (!jobId) return
-    setBusy('combined')
-    try {
-      const body: { job_id:number; resume_id?:number; quiz_id?:number } = { job_id: jobId }
-      if (resumeId) body.resume_id = resumeId
-      if (quiz?.quiz_id) body.quiz_id = quiz.quiz_id
-      const r = await api.match(body)
-      setCombined(r); setToast({kind:'success', msg:'Combined fit computed'})
-    } catch (e:any) {
-      setToast({kind:'error', msg:e.message || 'Combined fit failed'})
-    } finally { setBusy(null) }
+  function onDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    handleFiles(e.dataTransfer?.files || null);
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-        <h1 className="text-2xl font-semibold">HireScore — AI Job Fit & Interview Prep</h1>
-        <div className="sm:ml-auto">
-          {health === 'checking' && <span className="badge border-slate-300 bg-slate-100 text-slate-700">Checking…</span>}
-          {health === 'ok' && <span className="badge border-green-200 bg-green-100 text-green-700">Connected</span>}
-          {health === 'error' && <span className="badge border-rose-200 bg-rose-50 text-rose-700">Backend Offline</span>}
-        </div>
+    <div
+      className={`upload-drop ${dragging ? "is-drag" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="sr-only"
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+
+      <div className="dz-icon" aria-hidden>📄</div>
+      <div className="dz-title">Drop your resume here</div>
+      <div className="dz-sub">PDF, DOCX, or TXT</div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          className="btn-primary btn-sm"
+          onClick={() => inputRef.current?.click()}
+          type="button"
+        >
+          Choose File
+        </button>
+        <span className="text-xs text-slate-500">or drag & drop</span>
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div className={
-          `card p-3 ${toast.kind==='success'?'bg-green-50 border-green-200':
-          toast.kind==='error'?'bg-rose-50 border-rose-200':'bg-slate-50 border-slate-200'}`
-        }>
-          <div className="text-sm">{toast.msg}</div>
-        </div>
+      {selectedName && (
+        <div className="mt-3 text-xs text-slate-600">{selectedName}</div>
       )}
 
-      {/* JD Card */}
-      <div className="card">
-        <div className="card-h">
-          <div className="text-lg font-medium">Paste Job Description</div>
-          <div className="text-sm text-slate-600">Enter a title and full JD. You can take the quiz with just a JD, or add a resume to enable CV matching and combined fit.</div>
-        </div>
-        <div className="card-c space-y-4">
-          <div>
-            <label className="block text-sm mb-1">Job Title</label>
-            <input className="input" value={jobTitle} onChange={e=>setJobTitle(e.target.value)} placeholder="e.g. Senior Software Engineer" />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Job Description</label>
-            <textarea className="textarea" value={jobText} onChange={e=>setJobText(e.target.value)} placeholder="Paste the complete job description here…" />
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="btn-primary" disabled={!jobTitle || !jobText || !!busy} onClick={saveJD}>
-              {busy==='jd' ? 'Saving…' : 'Save JD'}
-            </button>
-            {jobId && <span className="badge border-slate-300 text-slate-700 bg-slate-100">job_id: {jobId}</span>}
+      {busy && (
+        <div className="upload-overlay">
+          <div className="flex items-center gap-2 rounded-lg bg-slate-900/80 px-3 py-2 text-xs text-white">
+            <Spinner />
+            <span>Uploading…</span>
           </div>
         </div>
-      </div>
+      )}
+    </div>
+  );
+}
 
-      {/* Resume Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="card">
-          <div className="card-h">
-            <div className="text-lg font-medium">Paste Resume</div>
-            <div className="text-sm text-slate-600">Paste your resume as plain text.</div>
+/* ---------- app ---------- */
+export default function App() {
+  /* Health */
+  const [health, setHealth] = useState<"checking" | "ok" | "error">("checking");
+  useEffect(() => {
+    api
+      .health()
+      .then(() => setHealth("ok"))
+      .catch(() => setHealth("error"));
+  }, []);
+
+  /* JD */
+  const [jobTitle, setJobTitle] = useState("");
+  const [jobText, setJobText] = useState("");
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [savedJobTitle, setSavedJobTitle] = useState("");
+  const [savedJobText, setSavedJobText] = useState("");
+
+  /* Resume */
+  const [resumeText, setResumeText] = useState("");
+  const [resumeId, setResumeId] = useState<number | null>(null);
+  const [savedResumeText, setSavedResumeText] = useState("");
+
+  /* Quiz */
+  const [quizN, setQuizN] = useState(5);
+  const [quiz, setQuiz] = useState<QuizStartResp | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  
+  const [graded, setGraded] = useState<QuizGradeResp | null>(null);
+  const [quizOpen, setQuizOpen] = useState(false);
+  const [quizMatch, setQuizMatch] = useState<{
+    score: number;
+    gaps: string[];
+    matched: number;
+    total_skills: number;
+    message?: string;
+  } | null>(null);
+
+  /* Results */
+  const [cvResult, setCvResult] = useState<MatchResp | null>(null);
+  const [showCvResult, setShowCvResult] = useState(false);
+
+  /* Busy & toast */
+  const [busy, setBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState<
+    { kind: "success" | "error" | "info"; msg: string } | null
+  >(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    if (toast.kind === "error") return;
+    const t = setTimeout(() => setToast(null), 10_000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const jdChanged =
+    jobTitle.trim() !== savedJobTitle.trim() ||
+    jobText.trim() !== savedJobText.trim();
+  const resumeChanged = resumeText.trim() !== savedResumeText.trim();
+
+  const canCvMatch = !!jobId && !!resumeId;
+  const canGenerateQuiz = !!jobId;
+
+  /* Actions */
+  async function saveJD() {
+    if (!jobTitle.trim() || !jobText.trim() || !jdChanged) return;
+    setBusy("jd");
+    try {
+      const r = await api.saveJD({ title: jobTitle, jd_text: jobText });
+      setJobId(r.job_id);
+      setSavedJobTitle(jobTitle);
+      setSavedJobText(jobText);
+      setToast({ kind: "success", msg: "Job description saved ✅" });
+    } catch (e: any) {
+      setToast({ kind: "error", msg: e.message || "Failed to save job" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveResume() {
+    if (!resumeText.trim() || !resumeChanged) return;
+    setBusy("resume_text");
+    try {
+      const r = await api.saveResumeText({ text: resumeText });
+      setResumeId(r.resume_id);
+      setSavedResumeText(resumeText);
+      setToast({ kind: "success", msg: "Resume saved ✅" });
+    } catch (e: any) {
+      setToast({ kind: "error", msg: e.message || "Failed to save resume" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function uploadResumeFile(file?: File | null) {
+    if (!file) return;
+    setBusy("resume_file");
+    try {
+      const r = await api.uploadResumeFile(file);
+      setResumeId(r.resume_id);
+      setSavedResumeText(""); // file-based upload
+      setToast({ kind: "success", msg: "Resume uploaded ✅" });
+    } catch (e: any) {
+      setToast({ kind: "error", msg: e.message || "Upload failed" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runCvMatch() {
+    if (!canCvMatch) return;
+    setBusy("cv");
+    try {
+      const r = await api.match({ job_id: jobId!, resume_id: resumeId! });
+      setCvResult(r);
+      setShowCvResult(true);
+      setToast({ kind: "success", msg: "CV match computed ✅" });
+    } catch (e: any) {
+      setToast({ kind: "error", msg: e.message || "CV match failed" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateQuiz() {
+    if (!canGenerateQuiz) return;
+    setBusy("quiz_start");
+    try {
+      const r = await api.startQuiz({ job_id: jobId!, n: quizN });
+      setQuiz(r);
+      setAnswers({});
+      setGraded(null);
+      setQuizOpen(true);
+      setToast({ kind: "success", msg: "Quiz generated ✅" });
+    } catch (e: any) {
+      setToast({ kind: "error", msg: e.message || "Quiz generation failed" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitAnswers() {
+    if (!quiz?.quiz_id) return;
+    setBusy("quiz_grade");
+    try {
+      const payload = {
+        quiz_id: quiz.quiz_id,
+        answers: quiz.questions.map((q) => ({
+          question_id: q.id,
+          text: answers[q.id] || "",
+        })),
+      };
+      const r = await api.gradeQuiz(payload);
+setGraded(r);
+setQuizMatch(r.quiz_match ?? null);
+setQuizOpen(false);
+setToast({
+  kind: "success",
+  msg: `Quiz graded: ${Math.round(r.overall)}% ✅`,
+});
+
+    } catch (e: any) {
+      setToast({ kind: "error", msg: e.message || "Quiz grading failed" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function resetAll() {
+    setJobTitle("");
+    setJobText("");
+    setJobId(null);
+    setSavedJobTitle("");
+    setSavedJobText("");
+    setResumeText("");
+    setResumeId(null);
+    setSavedResumeText("");
+    setQuizN(5);
+    setQuiz(null);
+    setAnswers({});
+    setGraded(null);
+    setCvResult(null);
+    setShowCvResult(false);
+  }
+
+  /* ---------- UI ---------- */
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Navbar */}
+      <nav className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <div className="text-lg font-semibold tracking-tight text-slate-900">
+            <span className="text-indigo-600">HireScore</span>{" "}
+            <span className="text-slate-800">· AI Job Fit & Interview Prep</span>
           </div>
+          <div>
+            {health === "checking" && (
+              <span className="chip chip-muted">Checking…</span>
+            )}
+            {health === "ok" && <span className="chip chip-good">Connected</span>}
+            {health === "error" && (
+              <span className="chip chip-bad">Backend Offline</span>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
+        {/* Toast */}
+        {toast && (
+          <div
+            className={`toast ${
+              toast.kind === "success"
+                ? "toast-success"
+                : toast.kind === "error"
+                ? "toast-error"
+                : "toast-info"
+            }`}
+          >
+            <div className="flex-1 text-sm">{toast.msg}</div>
+            <button
+              className="icon-btn"
+              aria-label="Close"
+              onClick={() => setToast(null)}
+            >
+              ✖
+            </button>
+          </div>
+        )}
+
+        {/* JD */}
+        <section className="card">
+          <header className="section-header">
+            <div className="section-title">Paste Job Description</div>
+            <div className="section-sub">
+              Add a title and full JD. You can generate a quiz with just a JD,
+              and add a resume later for CV matching.
+            </div>
+          </header>
           <div className="card-c space-y-4">
-            {!jobId && <div className="text-sm border border-amber-200 bg-amber-50 text-amber-900 rounded-md p-3">Tip: You can save a resume now, but quiz generation works best with a saved JD.</div>}
             <div>
-              <label className="block text-sm mb-1">Resume Text</label>
-              <textarea className="textarea" value={resumeText} onChange={e=>setResumeText(e.target.value)} placeholder="Paste your complete resume here…" />
+              <label className="label">Job Title</label>
+              <input
+                className="input"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="e.g. Senior Software Engineer"
+              />
+            </div>
+            <div>
+              <label className="label">Job Description</label>
+              <textarea
+                className="textarea"
+                value={jobText}
+                onChange={(e) => setJobText(e.target.value)}
+                placeholder="Paste the complete job description here…"
+              />
             </div>
             <div className="flex items-center gap-3">
-              <button className="btn-primary" disabled={!resumeText || !!busy} onClick={saveResume}>
-                {busy==='resume_text' ? 'Saving…' : 'Save Resume'}
+              <button
+                className="btn-primary"
+                disabled={
+                  !jobTitle.trim() || !jobText.trim() || !jdChanged || busy === "jd"
+                }
+                onClick={saveJD}
+              >
+                {busy === "jd" ? (
+                  <>
+                    <Spinner /> <span className="ml-2">Saving…</span>
+                  </>
+                ) : (
+                  "Save JD"
+                )}
               </button>
-              {resumeId && <span className="badge border-slate-300 text-slate-700 bg-slate-100">resume_id: {resumeId}</span>}
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="card">
-          <div className="card-h">
-            <div className="text-lg font-medium">Upload Resume File</div>
-            <div className="text-sm text-slate-600">PDF, DOCX, or TXT (≤ 5MB).</div>
-          </div>
-          <div className="card-c space-y-4">
-            <input type="file" accept=".pdf,.docx,.txt" onChange={(e)=>uploadResumeFile(e.target.files?.[0])} className="input" />
-            <div className="text-xs text-slate-500">Upload triggers immediately on file select.</div>
-            {resumeId && <span className="badge border-slate-300 text-slate-700 bg-slate-100">resume_id: {resumeId}</span>}
-          </div>
-        </div>
-      </div>
-
-      {/* Results & Actions */}
-      <div className="card">
-        <div className="card-h">
-          <div className="text-lg font-medium">Results & Actions</div>
-          <div className="text-sm text-slate-600">Run CV Match, take an Interview Quiz, or compute Combined Fit. Do them in any order.</div>
-        </div>
-        <div className="card-c space-y-10">
-
-          {/* CV Match */}
-          <section className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <span>JD: {jobId ? <span className="badge border-slate-300 bg-slate-100">ID {jobId}</span> : <span className="badge border-amber-300 bg-amber-50 text-amber-800">missing</span>}</span>
-              <span>Resume: {resumeId ? <span className="badge border-slate-300 bg-slate-100">ID {resumeId}</span> : <span className="badge border-amber-300 bg-amber-50 text-amber-800">optional for CV match</span>}</span>
+        {/* Resume */}
+        <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="card">
+            <header className="section-header">
+              <div className="section-title">Update Resume</div>
+              <div className="section-sub">
+                Paste your resume as plain text. (JD helps generate better quiz
+                questions.)
+              </div>
+            </header>
+            <div className="card-c space-y-4">
+              <div>
+                <label className="label">Resume Text</label>
+                <textarea
+                  className="textarea"
+                  value={resumeText}
+                  onChange={(e) => setResumeText(e.target.value)}
+                  placeholder="Paste your complete resume here…"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  className="btn-primary"
+                  disabled={
+                    !resumeText.trim() || !resumeChanged || busy === "resume_text"
+                  }
+                  onClick={saveResume}
+                >
+                  {busy === "resume_text" ? (
+                    <>
+                      <Spinner /> <span className="ml-2">Saving…</span>
+                    </>
+                  ) : (
+                    "Save Resume"
+                  )}
+                </button>
+              </div>
             </div>
-            <button className="btn-outline" disabled={!canCvMatch || !!busy} onClick={runCvMatch}>
-              {busy==='cv' ? 'Computing…' : 'Run CV Match'}
-            </button>
+          </div>
 
-            {cvResult?.cv_match && (
-              <div className="mt-3 grid gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl font-semibold">{pct(cvResult.cv_match.score)}</div>
-                  <span className={badgeClass(cvResult.badge)}>{cvResult.badge || 'cv'}</span>
-                </div>
-                <div className="text-sm text-slate-700">
-                  Matched <b>{cvResult.cv_match.matched}</b> of <b>{cvResult.cv_match.total_skills}</b> skills
-                </div>
-                {(cvResult.recommend?.top_cv_gaps?.length || cvResult.cv_match.gaps.length) ? (
-                  <div className="text-sm">
-                    <div className="mb-1 text-slate-600">Top gaps:</div>
-                    <div className="flex flex-wrap gap-2">
-                      {(cvResult.recommend?.top_cv_gaps || cvResult.cv_match.gaps).slice(0,8).map((g, i) => (
-                        <span key={i} className="badge border-slate-200 bg-slate-100 text-slate-800">{g}</span>
-                      ))}
+          <div className="card">
+            <header className="section-header">
+              <div className="section-title">Upload Resume File</div>
+              <div className="section-sub">PDF, DOCX, or TXT</div>
+            </header>
+            <div className="card-c space-y-3">
+              <FileUpload
+                accept=".pdf,.docx,.txt"
+                busy={busy === "resume_file"}
+                onSelect={(file) => uploadResumeFile(file)}
+              />
+              <div className="text-xs text-slate-500">
+                Upload triggers immediately on file select.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Results */}
+        <section className="card">
+          <header className="section-header">
+            <div className="section-title">Results</div>
+            <div className="section-sub">
+              Run CV Match or generate an interview quiz. Do them in any order.
+            </div>
+          </header>
+
+          <div className="card-c space-y-10">
+            {/* CV Match */}
+            <div className="space-y-3">
+              <div className="text-sm text-slate-600">
+                JD: {jobId ? "ready" : "missing"} · Resume:{" "}
+                {resumeId ? "ready" : "optional"}
+              </div>
+              <button
+                className="btn-outline"
+                disabled={!canCvMatch || busy === "cv"}
+                onClick={runCvMatch}
+              >
+                {busy === "cv" ? (
+                  <>
+                    <Spinner /> <span className="ml-2">Computing…</span>
+                  </>
+                ) : (
+                  "Run CV Match"
+                )}
+              </button>
+
+              {cvResult?.cv_match && showCvResult && (
+                <div className="result-panel">
+                  <button
+                    className="icon-btn absolute right-3 top-3"
+                    aria-label="Close"
+                    onClick={() => setShowCvResult(false)}
+                  >
+                    ✖
+                  </button>
+
+                  <div className="flex items-baseline gap-3">
+                    <div className="text-4xl font-semibold">
+                      {pct(cvResult.cv_match.score)}
+                    </div>
+                    <div
+                      className={`chip ${
+                        humanizeBadge(cvResult.badge).tone === "good"
+                          ? "chip-good"
+                          : humanizeBadge(cvResult.badge).tone === "warn"
+                          ? "chip-warn"
+                          : humanizeBadge(cvResult.badge).tone === "bad"
+                          ? "chip-bad"
+                          : "chip-muted"
+                      }`}
+                    >
+                      {humanizeBadge(cvResult.badge).emoji}{" "}
+                      {humanizeBadge(cvResult.badge).label}
                     </div>
                   </div>
-                ) : null}
-                {cvResult.message && <div className="text-sm text-slate-600">{cvResult.message}</div>}
-              </div>
-            )}
-          </section>
 
-          {/* Quiz */}
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <label className="text-sm">Questions:</label>
-              <input type="number" className="input w-24" min={1} max={10} value={quizN} onChange={(e)=>setQuizN(Number(e.target.value || 5))} />
-              <button className="btn-outline" disabled={!canStartQuiz || !!busy} onClick={startQuiz}>
-                {busy==='quiz_start' ? 'Starting…' : 'Start Quiz'}
-              </button>
-              {quiz && <span className="badge border-slate-300 bg-slate-100">quiz_id: {quiz.quiz_id}</span>}
+                  <div className="mt-1 text-sm text-slate-700">
+                    Matched <b>{cvResult.cv_match.matched}</b> of{" "}
+                    <b>{cvResult.cv_match.total_skills}</b> skills
+                  </div>
+
+                  {(cvResult.recommend?.top_cv_gaps?.length ||
+                    cvResult.cv_match.gaps.length) && (
+                    <div className="mt-4">
+                      <div className="mb-1 text-sm text-slate-600">
+                        Top gaps to work on:
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {(cvResult.recommend?.top_cv_gaps ||
+                          cvResult.cv_match.gaps)
+                          .slice(0, 10)
+                          .map((g, i) => (
+                            <span key={i} className="chip chip-muted">
+                              {g}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {cvResult.message && (
+                    <div className="mt-4 text-sm text-slate-700">
+                      {cvResult.message}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+            {/* Quiz Fit (self-assessment) */}
+{quizMatch && (
+  <div className="result-panel">
+    <div className="flex items-baseline gap-3">
+      <div className="text-4xl font-semibold">{pct(quizMatch.score)}</div>
+      <span className="chip chip-muted">Quiz Fit</span>
+    </div>
 
-            {quiz?.questions?.length ? (
-              <div className="space-y-4">
-                {quiz.questions.map(q => (
+    <div className="mt-1 text-sm text-slate-700">
+      Strong answers on {quizMatch.matched} of {quizMatch.total_skills} areas.
+    </div>
+
+    {!!quizMatch.gaps?.length && (
+      <div className="mt-4">
+        <div className="mb-1 text-sm text-slate-600">Improve these areas:</div>
+        <div className="flex flex-wrap gap-2">
+          {quizMatch.gaps.slice(0, 10).map((g, i) => (
+            <span key={i} className="chip chip-muted">{g}</span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {quizMatch.message && (
+      <div className="mt-4 text-sm text-slate-700">{quizMatch.message}</div>
+    )}
+  </div>
+)}
+
+            {/* Quiz */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="text-sm">Questions:</label>
+                <input
+                  type="number"
+                  className="input input-narrow"
+                  min={1}
+                  max={10}
+                  value={quizN}
+                  onChange={(e) => setQuizN(Number(e.target.value || 5))}
+                  onKeyDown={(e) => {
+                    const allowed = ["ArrowUp", "ArrowDown", "Tab"];
+                    if (!allowed.includes(e.key)) e.preventDefault();
+                  }}
+                  onPaste={(e) => e.preventDefault()}
+                />
+                <button
+                  className="btn-outline"
+                  disabled={!canGenerateQuiz || busy === "quiz_start"}
+                  onClick={generateQuiz}
+                >
+                  {busy === "quiz_start" ? (
+                    <>
+                      <Spinner /> <span className="ml-2">Generating…</span>
+                    </>
+                  ) : (
+                    "Generate Quiz"
+                  )}
+                </button>
+                {quiz && (
+                  <button
+                    className="btn-outline"
+                    onClick={() => setQuizOpen(true)}
+                  >
+                    Open Quiz
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3">
+          <button className="btn-outline" onClick={resetAll}>
+            Reset Session
+          </button>
+        </div>
+      </main>
+
+      {/* Quiz Modal */}
+      {quizOpen && (
+        <div className="modal-backdrop" onClick={() => setQuizOpen(false)}>
+          <div
+            className="modal-panel"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <header className="flex items-start justify-between">
+              <div className="text-lg font-semibold">🧪 Quiz</div>
+              <button
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setQuizOpen(false)}
+              >
+                ✖
+              </button>
+            </header>
+
+            {!quiz?.questions?.length ? (
+              <div className="py-8 text-center text-sm text-slate-600">
+                No questions generated yet.
+              </div>
+            ) : (
+                <div className="mt-4 max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+                {quiz.questions.map((q, i) => (
                   <div key={q.id} className="space-y-2">
-                    <div className="text-sm font-medium">{q.idx}. {q.text}</div>
+                    <div className="text-sm font-medium">
+                      {i + 1}. {q.text}
+                    </div>
                     <textarea
                       className="textarea"
-                      value={answers[q.id] || ''}
-                      onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))}
+                      value={answers[q.id] || ""}
+                      onChange={(e) =>
+                        setAnswers((a) => ({ ...a, [q.id]: e.target.value }))
+                      }
                       placeholder="Type your answer…"
                     />
                   </div>
                 ))}
-                <button className="btn-primary" disabled={!!busy} onClick={submitAnswers}>
-                  {busy==='quiz_grade' ? 'Grading…' : 'Submit Answers'}
-                </button>
-
-                {graded && (
-                  <div className="mt-4 space-y-2">
-                    <div className="text-xl font-semibold">Overall: {pct(graded.overall)}</div>
-                    <div className="space-y-2">
-                      {graded.feedback.map((f, i) => (
-                        <div key={i} className="border border-slate-200 rounded-lg p-3 bg-white">
-                          <div className="text-sm font-medium">Q{ i+1 } — Score: {pct(f.score)}</div>
-                          <div className="text-sm text-slate-700 mt-1">{f.tip}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
-            ) : null}
-          </section>
-
-          {/* Combined Fit */}
-          <section className="space-y-3">
-            <button className="btn-outline" disabled={!canComputeCombined || !!busy} onClick={computeCombined}>
-              {busy==='combined' ? 'Computing…' : 'Compute Combined Fit'}
-            </button>
-
-            {combined && (
-              <div className="grid gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl font-semibold">{pct(combined.combined ?? combined.cv_match?.score ?? combined.quiz_match?.score)}</div>
-                  <span className={badgeClass(combined.badge)}>{combined.badge || 'combined'}</span>
-                </div>
-                {combined.message && <div className="text-sm text-slate-700">{combined.message}</div>}
-                {combined.recommend?.top_cv_gaps?.length ? (
-                  <div className="text-sm">
-                    <div className="mb-1 text-slate-600">Recommended gaps to address:</div>
-                    <div className="flex flex-wrap gap-2">
-                      {combined.recommend.top_cv_gaps.slice(0,8).map((g,i)=>(
-                        <span key={i} className="badge border-slate-200 bg-slate-100 text-slate-800">{g}</span>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              
             )}
-          </section>
-        </div>
-      </div>
 
-      {/* Footer controls */}
-      <div className="flex items-center gap-3 justify-end">
-        <button className="btn-outline" onClick={resetAll}>Reset Session</button>
-        <a className="btn-outline" href="/api-docs" target="_blank" rel="noreferrer">API Docs</a>
-      </div>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button className="btn-outline" onClick={() => setQuizOpen(false)}>
+                Close
+              </button>
+              <button
+                className="btn-primary"
+                disabled={busy === "quiz_grade" || !quiz?.questions?.length}
+                onClick={submitAnswers}
+              >
+                {busy === "quiz_grade" ? (
+                  <>
+                    <Spinner /> <span className="ml-2">Grading…</span>
+                  </>
+                ) : (
+                  "Submit Answers"
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
-  )
+  );
 }
