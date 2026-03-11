@@ -9,8 +9,8 @@ AI-powered job fit and interview prep tool with a React frontend and FastAPI bac
 ---
 
 ## Screenshots
-![HireScore – Overview](./images/1.jpeg)
 ![HireScore – Resume & JD Input](./images/2.jpeg)
+![HireScore – Overview](./images/1.jpeg)
 ![HireScore – Match & Quiz Results](./images/3.jpeg)
 
 ---
