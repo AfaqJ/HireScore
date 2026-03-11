@@ -234,8 +234,3 @@ You can reset the current session at any time via the **Reset Session** button i
   - Deleting these will reset stored jobs, resumes, quizzes, and embeddings.
 
 ---
-
-## License
-
-Add your preferred license here (e.g. MIT, Apache‑2.0) if you plan to open‑source this project.
-
