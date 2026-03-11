@@ -9,10 +9,9 @@ AI-powered job fit and interview prep tool with a React frontend and FastAPI bac
 ---
 
 ## Screenshots
-> Place the screenshots at `images/1.png`, `images/2.png`, and `images/3.png` in the repo root.
-![HireScore – Overview](./images/1.png)
-![HireScore – Resume & JD Input](./images/2.png)
-![HireScore – Match & Quiz Results](./images/3.png)
+![HireScore – Overview](./images/1.jpeg)
+![HireScore – Resume & JD Input](./images/2.jpeg)
+![HireScore – Match & Quiz Results](./images/3.jpeg)
 
 ---
 
